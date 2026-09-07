@@ -144,7 +144,7 @@ The screenshot shows every section, with `--tooltip-format both --days 4 --hours
 | `--hours <N>` | 0-24 | `0` | Hours in the tooltip |
 | `--units <UNITS>` | `metric`, `imperial` | `metric` | Unit system |
 | `--icons <SET>` | `nerd`, `weather`, `emoji`, `fontawesome` | `nerd` | Icon set for the bar text |
-| `--language <CODE>` | `en`, `de` | `LC_MESSAGES`/`LANG`, else `en` | Language for the condition text and forecast weekday names |
+| `--language <CODE>` | `en`, `de` | `LC_ALL`/`LC_MESSAGES`/`LANG`, else `en` | Language for the condition text and the forecast day labels. The first of those variables that is set decides; an unknown code, `C` or `POSIX` is English; region and encoding suffixes (`de_DE.UTF-8`) are ignored |
 | `--tooltip-font <NAME>` | font family or list | `JetBrainsMono Nerd Font, JetBrainsMono Nerd Font Mono, monospace` | The family the tooltip is pinned to. Must be monospace — see [Tooltip font](#tooltip-font) |
 | `--frame`, `--frame-font` | — | — | **DEPRECATED**, still accepted. `--frame` is a no-op; `--frame-font` aliases `--tooltip-font` |
 | `--no-color[=<WHAT>]` | `all`, `bar`, `tooltip` | `all` | Drops the colors. See [Monochrome mode](#monochrome-mode) |
@@ -294,7 +294,7 @@ Configure these keys in the shell settings window, or in the layout entry in `sh
 | `location` | text | `""` | City name, `City, Province`, or `City, CC`. An empty value detects the location by IP |
 | `iconSet` | `nerd`, `weather`, `emoji`, `fontawesome` | `nerd` | Icon set. `fontawesome` needs otf-font-awesome 7 or later |
 | `colorMode` | `full`, `none`, `bar-only`, `panel-only` | `full` | Where to keep the colors |
-| `language` | `en`, `de` | `""` (auto) | Not in the settings window — set it in `shell.json` directly. Empty follows the CLI's own `LC_MESSAGES`/`LANG`/English fallback |
+| `language` | `en`, `de` | `""` (auto) | Not in the settings window — set it in `shell.json` directly. Empty follows the CLI's own `LC_ALL`/`LC_MESSAGES`/`LANG`/English fallback. Needs meteobar 0.5.3 or later: an older CLI rejects `--language` |
 
 ## Theming
 

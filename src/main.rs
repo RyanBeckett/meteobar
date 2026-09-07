@@ -59,9 +59,10 @@ struct Cli {
     icons: IconSet,
 
     /// Language for the condition text ("Clear sky", "Overcast", ...) and the
-    /// forecast weekday abbreviations. Wins over LC_MESSAGES/LANG when set;
-    /// unset falls back to those, then to English. Only "en" and "de" are
-    /// known today; anything else resolves to English.
+    /// forecast day labels. Wins over the environment when set; unset, the
+    /// first of LC_ALL, LC_MESSAGES, LANG that is set decides, else English.
+    /// Only "en" and "de" are known today; anything else (including C and
+    /// POSIX) resolves to English. Region and encoding suffixes are ignored.
     #[arg(long)]
     language: Option<String>,
 
@@ -126,10 +127,14 @@ fn main() {
     let colors = theme::ThemeColors::load();
     let color_choice =
         waybar::resolve_color_choice(cli.no_color, std::env::var("NO_COLOR").ok().as_deref());
+    let env_language = ["LC_ALL", "LC_MESSAGES", "LANG"].map(|name| std::env::var(name).ok());
     let language = Language::resolve(
         cli.language.as_deref(),
-        std::env::var("LC_MESSAGES").ok().as_deref(),
-        std::env::var("LANG").ok().as_deref(),
+        [
+            env_language[0].as_deref(),
+            env_language[1].as_deref(),
+            env_language[2].as_deref(),
+        ],
     );
 
     let client = reqwest::blocking::Client::builder()

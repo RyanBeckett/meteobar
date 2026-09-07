@@ -327,10 +327,17 @@ Panel {
   }
 
   // ---- formatting helpers ----------------------------------------------------
-  function dayLabel(dateString, index) {
+  // The core publishes the row label already translated ("Heute", "Do 21"):
+  // Qt.formatDate is English-only, so the panel does not format dates. The
+  // English formatting below survives only as the fallback for a binary older
+  // than the label field (meteobar < 0.5.3).
+  function dayLabel(entry, index) {
+    if (!entry) return ""
+    var label = entry.label
+    if (typeof label === "string" && label !== "") return label
     if (index === 0) return "Today"
-    var p = String(dateString).split("-")
-    if (p.length !== 3) return String(dateString)
+    var p = String(entry.date || "").split("-")
+    if (p.length !== 3) return String(entry.date || "")
     var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]))
     return Qt.formatDate(d, "ddd d")
   }
@@ -800,7 +807,7 @@ Panel {
                   width: Style.space(58)
                   elide: Text.ElideRight
                   textFormat: Text.PlainText
-                  text: root.dayLabel(dayRow.modelData.date, dayRow.index).toUpperCase()
+                  text: root.dayLabel(dayRow.modelData, dayRow.index).toUpperCase()
                   color: Qt.darker(root.fg, 1.4)
                   font.family: root.fontFam
                   font.pixelSize: Style.font.caption

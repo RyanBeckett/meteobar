@@ -7,6 +7,8 @@
 
 use serde::Serialize;
 
+use chrono::Datelike;
+
 use crate::api::WeatherData;
 use crate::cache::Freshness;
 use crate::forecast;
@@ -150,6 +152,11 @@ pub struct DailyEntry {
     pub weather_code: u8,
     pub icon: String,
     pub description: &'static str,
+    /// The row label the panel shows, already in the requested language:
+    /// "Today"/"Heute" for the first entry, then "Thu 21"/"Do 21". The raw
+    /// `date` when it cannot be parsed. Published from the core so the panel
+    /// never formats a date itself (Qt.formatDate is English-only).
+    pub label: String,
     /// Maximum precipitation probability for the day, 0-100.
     pub precip_pct: Option<u8>,
     pub sunrise: String,
@@ -295,9 +302,11 @@ fn build_daily(
 ) -> Vec<DailyEntry> {
     forecast::forecast_days(weather, days)
         .into_iter()
-        .map(|slot| {
+        .enumerate()
+        .map(|(index, slot)| {
             let icon_info = get_icon_plain(slot.weather_code, true, icon_set, language);
             DailyEntry {
+                label: day_label(&slot.date, index, language),
                 date: slot.date,
                 temperature_min: slot.temperature_min,
                 temperature_max: slot.temperature_max,
@@ -310,6 +319,23 @@ fn build_daily(
             }
         })
         .collect()
+}
+
+/// The panel's daily row label. The first entry is "today" in the requested
+/// language; the others are the short weekday and the day of the month, no
+/// zero padding ("Thu 21"). A date that does not parse is returned as is.
+fn day_label(date: &str, index: usize, language: Language) -> String {
+    let Ok(parsed) = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d") else {
+        return date.to_string();
+    };
+    if index == 0 {
+        return crate::i18n::today(language).to_string();
+    }
+    format!(
+        "{} {}",
+        crate::i18n::short_weekday(parsed.weekday(), language),
+        parsed.day()
+    )
 }
 
 #[cfg(test)]
@@ -443,9 +469,29 @@ mod tests {
         assert_eq!(current.description, "Bedeckt");
         // condition (the CSS-class-style slug) never translates.
         assert_eq!(current.condition, "cloudy");
+        // The first selected hour carries code 3 as well.
+        assert_eq!(out.hourly[0].description, "Bedeckt");
         // daily[0] shares the same code (weather_code: vec![3, 61]).
         assert_eq!(out.daily[0].description, "Bedeckt");
         assert_eq!(out.daily[1].description, "Leichter Regen");
+        // The row labels come translated too; both fixture days are 2026-08-20,
+        // a Thursday.
+        assert_eq!(out.daily[0].label, "Heute");
+        assert_eq!(out.daily[1].label, "Do 20");
+    }
+
+    #[test]
+    fn day_labels_are_today_then_weekday_and_day_in_english() {
+        let out = build_test(&fixture(), "X", 2, 0, &IconSet::Nerd, false, fresh_cache());
+        assert_eq!(out.daily[0].label, "Today");
+        assert_eq!(out.daily[1].label, "Thu 20");
+    }
+
+    #[test]
+    fn a_date_that_does_not_parse_is_its_own_label() {
+        assert_eq!(day_label("nope", 0, Language::De), "nope");
+        assert_eq!(day_label("2026-08-21", 1, Language::De), "Fr 21");
+        assert_eq!(day_label("2026-08-21", 0, Language::De), "Heute");
     }
 
     #[test]

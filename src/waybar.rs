@@ -423,9 +423,9 @@ fn build_hourly_lines(
 
 fn short_day_name(date_str: &str, language: Language) -> String {
     if let Ok(date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
-        // chrono's %a formats in the process locale, not --language/LANG
-        // (that needs the unstable-locales feature); the weekday name is
-        // built from the fixed table in i18n.rs instead.
+        // chrono's %a is always English (localized names need the
+        // unstable-locales feature); the weekday name comes from the fixed
+        // table in i18n.rs instead.
         format!(
             "{} {}",
             i18n::short_weekday(date.weekday(), language),
@@ -646,12 +646,11 @@ mod tests {
             !tooltip.contains("Overcast"),
             "English condition text leaked: {tooltip:?}"
         );
-        // The daily line's weekday abbreviation is German too.
-        let date = chrono::NaiveDate::parse_from_str(&weather.daily.time[0], "%Y-%m-%d").unwrap();
-        let de_weekday = i18n::short_weekday(date.weekday(), Language::De);
+        // The daily line's weekday abbreviation is German too: the fixture's
+        // day is 2026-08-20, a Thursday.
         assert!(
-            tooltip.contains(de_weekday),
-            "expected the German weekday abbreviation {de_weekday:?}: {tooltip:?}"
+            tooltip.contains("Do 20"),
+            "expected the German weekday abbreviation: {tooltip:?}"
         );
     }
 

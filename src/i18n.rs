@@ -1,8 +1,12 @@
-//! Condition-text and weekday translations. A plain `match` over a fixed,
-//! small string set — no i18n crate, no locale data. New languages are added
-//! by extending `Language`, `condition_text`, and `short_weekday`; the
-//! `every_condition_string_is_translated` test below fails loudly if a
-//! variant is missing a case for any of the 28 WMO codes `icons.rs` knows.
+//! Condition-text, weekday and "today" translations. A plain `match` over a
+//! fixed, small string set — no i18n crate, no locale data. Every surface
+//! (Waybar tooltip, `--output json`, and through it the Omarchy panel) reads
+//! from here, so nothing is translated twice.
+//!
+//! Adding a language means: a `Language` variant, its code in `from_code`,
+//! a condition table like `de_condition_text`, a `short_weekday` arm, a
+//! `today` arm, and a completeness test like
+//! `every_condition_string_is_translated` (which covers German only).
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Language {
@@ -11,26 +15,22 @@ pub enum Language {
 }
 
 impl Language {
-    /// `--language` wins outright. Otherwise `LC_MESSAGES`, then `LANG`, are
-    /// read left to right and the first one that resolves to a known,
-    /// non-English language wins — an explicit `en*` value short-circuits
-    /// the search so it is not shadowed by a later variable. Nothing
-    /// recognized falls back to English, same as an unset environment.
-    pub fn resolve(flag: Option<&str>, lc_messages: Option<&str>, lang: Option<&str>) -> Language {
+    /// `--language` wins outright. Otherwise the first set, non-empty
+    /// variable of `env` decides — the caller passes `LC_ALL`, `LC_MESSAGES`,
+    /// `LANG` in that order, the POSIX precedence gettext uses. Whatever that
+    /// variable says is final: `C`, `POSIX`, an unknown language, all resolve
+    /// to English without consulting the next variable. An unset environment
+    /// is English too.
+    pub fn resolve(flag: Option<&str>, env: [Option<&str>; 3]) -> Language {
         if let Some(code) = flag {
             return Self::from_code(code);
         }
-        for candidate in [lc_messages, lang].into_iter().flatten() {
-            let primary = Self::primary_subtag(candidate);
-            if primary.eq_ignore_ascii_case("en") {
-                return Language::En;
-            }
-            let resolved = Self::from_code(candidate);
-            if resolved != Language::En {
-                return resolved;
-            }
-        }
-        Language::En
+        env.into_iter()
+            .flatten()
+            .map(str::trim)
+            .find(|value| !value.is_empty())
+            .map(Self::from_code)
+            .unwrap_or(Language::En)
     }
 
     /// POSIX locale strings look like `de_DE.UTF-8` or `de_DE@euro`; only the
@@ -40,7 +40,10 @@ impl Language {
     }
 
     fn from_code(code: &str) -> Language {
-        match Self::primary_subtag(code).to_ascii_lowercase().as_str() {
+        match Self::primary_subtag(code.trim())
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "de" => Language::De,
             _ => Language::En,
         }
@@ -91,10 +94,18 @@ fn de_condition_text(english: &'static str) -> &'static str {
     }
 }
 
-/// Abbreviated weekday name for the daily forecast (`waybar.rs::short_day_name`).
-/// Not chrono's `%a`: that formats in the process locale regardless of
-/// `--language`/`LANG` without the (unstable) `chrono/unstable-locales`
-/// feature, which is more machinery than 7 fixed abbreviations need.
+/// "Today", for the first row of the panel's daily forecast.
+pub fn today(language: Language) -> &'static str {
+    match language {
+        Language::En => "Today",
+        Language::De => "Heute",
+    }
+}
+
+/// Abbreviated weekday name for the daily forecast (`waybar.rs::short_day_name`
+/// and `structured.rs::day_label`). Not chrono's `%a`: that is always English
+/// unless the `unstable-locales` feature is on, which is more machinery than
+/// 7 fixed abbreviations need.
 pub fn short_weekday(weekday: chrono::Weekday, language: Language) -> &'static str {
     use chrono::Weekday::*;
     match language {
@@ -151,58 +162,114 @@ mod tests {
         );
     }
 
+    const UNSET: [Option<&str>; 3] = [None, None, None];
+
     #[test]
     fn explicit_flag_wins_over_environment() {
         assert_eq!(
-            Language::resolve(Some("de"), Some("en_US"), None),
+            Language::resolve(Some("de"), [Some("en_US"), Some("en_US"), Some("en_US")]),
             Language::De
         );
         assert_eq!(
-            Language::resolve(Some("en"), Some("de_DE"), None),
+            Language::resolve(Some("en"), [Some("de_DE"), Some("de_DE"), Some("de_DE")]),
+            Language::En
+        );
+        // An unknown flag is English, and it still blocks the environment.
+        assert_eq!(
+            Language::resolve(Some("fr"), [Some("de_DE"), None, None]),
             Language::En
         );
     }
 
     #[test]
-    fn lc_messages_beats_lang() {
+    fn the_first_set_variable_decides() {
+        // LC_ALL over LC_MESSAGES over LANG.
         assert_eq!(
-            Language::resolve(None, Some("de_DE.UTF-8"), Some("en_US.UTF-8")),
+            Language::resolve(None, [Some("de_DE"), Some("en_US"), None]),
+            Language::De
+        );
+        assert_eq!(
+            Language::resolve(None, [None, Some("de_DE.UTF-8"), Some("en_US.UTF-8")]),
+            Language::De
+        );
+        assert_eq!(
+            Language::resolve(None, [None, Some("en_US.UTF-8"), Some("de_DE.UTF-8")]),
+            Language::En
+        );
+        assert_eq!(
+            Language::resolve(None, [None, None, Some("de_AT")]),
             Language::De
         );
     }
 
     #[test]
-    fn lang_is_the_fallback_when_lc_messages_is_unset() {
-        assert_eq!(Language::resolve(None, None, Some("de_AT")), Language::De);
-    }
-
-    #[test]
-    fn an_explicit_english_locale_short_circuits_a_later_german_one() {
-        // LC_MESSAGES=en_US must win outright, not be treated as "unresolved"
-        // and fall through to LANG=de_DE.
+    fn c_posix_and_unknown_locales_are_english_and_stop_the_search() {
+        for base in ["C", "C.UTF-8", "POSIX", "fr_FR.UTF-8", "english"] {
+            assert_eq!(
+                Language::resolve(None, [None, Some(base), Some("de_DE.UTF-8")]),
+                Language::En,
+                "{base:?} must not fall through to LANG"
+            );
+        }
         assert_eq!(
-            Language::resolve(None, Some("en_US.UTF-8"), Some("de_DE.UTF-8")),
+            Language::resolve(None, [Some("fr_FR"), Some("de_DE"), None]),
             Language::En
         );
     }
 
     #[test]
-    fn unknown_or_missing_locale_defaults_to_english() {
-        assert_eq!(Language::resolve(None, None, None), Language::En);
+    fn empty_and_blank_variables_are_skipped() {
         assert_eq!(
-            Language::resolve(None, Some("fr_FR.UTF-8"), None),
+            Language::resolve(None, [Some(""), Some("de_DE"), None]),
+            Language::De
+        );
+        assert_eq!(
+            Language::resolve(None, [None, Some("  "), Some("de_DE")]),
+            Language::De
+        );
+        assert_eq!(
+            Language::resolve(None, [None, Some(" de_DE "), None]),
+            Language::De
+        );
+        assert_eq!(Language::resolve(None, UNSET), Language::En);
+    }
+
+    #[test]
+    fn region_encoding_and_case_are_ignored() {
+        for code in ["DE_ch.UTF-8", "de-DE", "de_DE@euro", "De"] {
+            assert_eq!(
+                Language::resolve(None, [Some(code), None, None]),
+                Language::De,
+                "{code:?}"
+            );
+        }
+        assert_eq!(
+            Language::resolve(None, [Some("EN-us"), None, Some("de_DE")]),
             Language::En
         );
-        assert_eq!(Language::resolve(None, Some(""), None), Language::En);
+    }
+
+    #[test]
+    fn today_is_translated() {
+        assert_eq!(today(Language::En), "Today");
+        assert_eq!(today(Language::De), "Heute");
     }
 
     #[test]
     fn short_weekday_covers_every_day_in_both_languages() {
         use chrono::Weekday::*;
-        for day in [Mon, Tue, Wed, Thu, Fri, Sat, Sun] {
-            assert!(!short_weekday(day, Language::En).is_empty());
-            assert!(!short_weekday(day, Language::De).is_empty());
+        let expected = [
+            (Mon, "Mon", "Mo"),
+            (Tue, "Tue", "Di"),
+            (Wed, "Wed", "Mi"),
+            (Thu, "Thu", "Do"),
+            (Fri, "Fri", "Fr"),
+            (Sat, "Sat", "Sa"),
+            (Sun, "Sun", "So"),
+        ];
+        for (day, en, de) in expected {
+            assert_eq!(short_weekday(day, Language::En), en);
+            assert_eq!(short_weekday(day, Language::De), de);
         }
-        assert_eq!(short_weekday(Mon, Language::De), "Mo");
     }
 }
