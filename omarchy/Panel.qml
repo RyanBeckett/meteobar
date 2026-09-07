@@ -89,6 +89,11 @@ Panel {
   readonly property int refreshMinutes: Math.max(1, parseInt(setting("refreshMinutes", 15), 10) || 15)
   readonly property string unitsSetting: String(setting("units", "metric")) === "imperial" ? "imperial" : "metric"
   readonly property string locationSetting: String(setting("location", "")).trim()
+  // Empty means "not set" — the CLI falls back to LC_MESSAGES/LANG, then
+  // English, on its own. Not exposed in manifest.json: unlike units, this
+  // has a sensible automatic default, so it is set (if at all) by editing
+  // shell.json directly, the same path units already takes.
+  readonly property string languageSetting: String(setting("language", "")).trim()
   readonly property string iconSetSetting: {
     var v = String(setting("iconSet", "nerd"))
     return ["nerd", "weather", "emoji", "fontawesome"].indexOf(v) >= 0 ? v : "nerd"
@@ -110,7 +115,7 @@ Panel {
   readonly property bool barColored: colorMode === "full" || colorMode === "bar-only"
 
   // Refetch when any setting that changes the payload changes.
-  readonly property string fetchKey: unitsSetting + "|" + locationSetting + "|" + iconSetSetting
+  readonly property string fetchKey: unitsSetting + "|" + locationSetting + "|" + iconSetSetting + "|" + languageSetting
   onFetchKeyChanged: Qt.callLater(refresh)
 
   // Open with fresh data. open/close/toggle shadow the Panel base so every
@@ -215,6 +220,10 @@ Panel {
       cmd.push("--location")
       cmd.push(locationSetting)
     }
+    if (languageSetting !== "") {
+      cmd.push("--language")
+      cmd.push(languageSetting)
+    }
     return cmd
   }
 
@@ -318,10 +327,17 @@ Panel {
   }
 
   // ---- formatting helpers ----------------------------------------------------
-  function dayLabel(dateString, index) {
+  // The core publishes the row label already translated ("Heute", "Do 21"):
+  // Qt.formatDate is English-only, so the panel does not format dates. The
+  // English formatting below survives only as the fallback for a binary older
+  // than the label field (meteobar < 0.5.3).
+  function dayLabel(entry, index) {
+    if (!entry) return ""
+    var label = entry.label
+    if (typeof label === "string" && label !== "") return label
     if (index === 0) return "Today"
-    var p = String(dateString).split("-")
-    if (p.length !== 3) return String(dateString)
+    var p = String(entry.date || "").split("-")
+    if (p.length !== 3) return String(entry.date || "")
     var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]))
     return Qt.formatDate(d, "ddd d")
   }
@@ -791,7 +807,7 @@ Panel {
                   width: Style.space(58)
                   elide: Text.ElideRight
                   textFormat: Text.PlainText
-                  text: root.dayLabel(dayRow.modelData.date, dayRow.index).toUpperCase()
+                  text: root.dayLabel(dayRow.modelData, dayRow.index).toUpperCase()
                   color: Qt.darker(root.fg, 1.4)
                   font.family: root.fontFam
                   font.pixelSize: Style.font.caption

@@ -2,6 +2,7 @@ mod api;
 mod cache;
 mod forecast;
 mod format;
+mod i18n;
 mod icons;
 mod safe_read;
 mod structured;
@@ -13,6 +14,7 @@ use std::time::Duration;
 use clap::Parser;
 
 use format::FormatData;
+use i18n::Language;
 use icons::IconSet;
 use waybar::{NoColorScope, Paint, TooltipFormat, WaybarOutput};
 
@@ -55,6 +57,14 @@ struct Cli {
 
     #[arg(long, value_enum, default_value_t = IconSet::Nerd)]
     icons: IconSet,
+
+    /// Language for the condition text ("Clear sky", "Overcast", ...) and the
+    /// forecast day labels. Wins over the environment when set; unset, the
+    /// first of LC_ALL, LC_MESSAGES, LANG that is set decides, else English.
+    /// Only "en" and "de" are known today; anything else (including C and
+    /// POSIX) resolves to English. Region and encoding suffixes are ignored.
+    #[arg(long)]
+    language: Option<String>,
 
     #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=60))]
     timeout: u64,
@@ -117,6 +127,15 @@ fn main() {
     let colors = theme::ThemeColors::load();
     let color_choice =
         waybar::resolve_color_choice(cli.no_color, std::env::var("NO_COLOR").ok().as_deref());
+    let env_language = ["LC_ALL", "LC_MESSAGES", "LANG"].map(|name| std::env::var(name).ok());
+    let language = Language::resolve(
+        cli.language.as_deref(),
+        [
+            env_language[0].as_deref(),
+            env_language[1].as_deref(),
+            env_language[2].as_deref(),
+        ],
+    );
 
     let client = reqwest::blocking::Client::builder()
         // Both endpoints answer directly; neither has ever redirected. The
@@ -164,6 +183,7 @@ fn main() {
                         None
                     },
                     color_choice,
+                    language,
                 ),
                 // The error tooltip follows the tooltip surface's setting.
                 Err(msg) => waybar::error_output(&msg, &colors, Paint::new(color_choice.tooltip)),
@@ -181,6 +201,7 @@ fn main() {
                         hours: cli.hours,
                         icon_set: &cli.icons,
                         imperial,
+                        language,
                     },
                     structured::CacheInfo::from_freshness(&freshness),
                     &colors,
@@ -393,11 +414,13 @@ fn build_output(
     last_fetched: Option<chrono::DateTime<chrono::Local>>,
     stale_reason: Option<&str>,
     color_choice: waybar::ColorChoice,
+    language: Language,
 ) -> WaybarOutput {
     let icon_info = icons::get_icon(
         weather.current.weather_code,
         weather.current.is_day == 1,
         &cli.icons,
+        language,
     );
 
     let current = &weather.current;
@@ -468,6 +491,7 @@ fn build_output(
         stale_reason,
         cli.frame_font.as_deref().unwrap_or(&cli.tooltip_font),
         Paint::new(color_choice.tooltip),
+        language,
     );
 
     WaybarOutput {

@@ -7,10 +7,13 @@
 
 use serde::Serialize;
 
+use chrono::Datelike;
+
 use crate::api::WeatherData;
 use crate::cache::Freshness;
 use crate::forecast;
 use crate::format::degrees_to_cardinal;
+use crate::i18n::Language;
 use crate::icons::{get_icon_plain, IconSet};
 use crate::theme::{RampStop, ThemeColors};
 
@@ -149,6 +152,11 @@ pub struct DailyEntry {
     pub weather_code: u8,
     pub icon: String,
     pub description: &'static str,
+    /// The row label the panel shows, already in the requested language:
+    /// "Today"/"Heute" for the first entry, then "Thu 21"/"Do 21". The raw
+    /// `date` when it cannot be parsed. Published from the core so the panel
+    /// never formats a date itself (Qt.formatDate is English-only).
+    pub label: String,
     /// Maximum precipitation probability for the day, 0-100.
     pub precip_pct: Option<u8>,
     pub sunrise: String,
@@ -172,12 +180,13 @@ pub fn icon_set_name(icon_set: &IconSet) -> &'static str {
     }
 }
 
-/// What to render, and in which units/glyphs, for one structured build.
+/// What to render, and in which units/glyphs/language, for one structured build.
 pub struct Request<'a> {
     pub days: u8,
     pub hours: u8,
     pub icon_set: &'a IconSet,
     pub imperial: bool,
+    pub language: Language,
 }
 
 pub fn build(
@@ -197,9 +206,15 @@ pub fn build(
         hours,
         icon_set,
         imperial,
+        language,
     } = *request;
     let current = &weather.current;
-    let icon_info = get_icon_plain(current.weather_code, current.is_day == 1, icon_set);
+    let icon_info = get_icon_plain(
+        current.weather_code,
+        current.is_day == 1,
+        icon_set,
+        language,
+    );
 
     StructuredOutput {
         schema_version: SCHEMA_VERSION,
@@ -225,8 +240,8 @@ pub fn build(
             description: icon_info.description,
             condition: icon_info.css_class,
         }),
-        hourly: build_hourly(weather, hours, icon_set),
-        daily: build_daily(weather, days, icon_set),
+        hourly: build_hourly(weather, hours, icon_set, language),
+        daily: build_daily(weather, days, icon_set, language),
     }
 }
 
@@ -256,11 +271,16 @@ pub fn error_output(
 
 /// Render the shared hourly selection. Which entries appear is decided once,
 /// in `forecast`, so this matches the Waybar tooltip exactly.
-fn build_hourly(weather: &WeatherData, hours: u8, icon_set: &IconSet) -> Vec<HourlyEntry> {
+fn build_hourly(
+    weather: &WeatherData,
+    hours: u8,
+    icon_set: &IconSet,
+    language: Language,
+) -> Vec<HourlyEntry> {
     forecast::upcoming_hours(weather, hours)
         .into_iter()
         .map(|slot| {
-            let icon_info = get_icon_plain(slot.weather_code, slot.is_day, icon_set);
+            let icon_info = get_icon_plain(slot.weather_code, slot.is_day, icon_set, language);
             HourlyEntry {
                 time: slot.time,
                 temperature: slot.temperature,
@@ -274,12 +294,19 @@ fn build_hourly(weather: &WeatherData, hours: u8, icon_set: &IconSet) -> Vec<Hou
         .collect()
 }
 
-fn build_daily(weather: &WeatherData, days: u8, icon_set: &IconSet) -> Vec<DailyEntry> {
+fn build_daily(
+    weather: &WeatherData,
+    days: u8,
+    icon_set: &IconSet,
+    language: Language,
+) -> Vec<DailyEntry> {
     forecast::forecast_days(weather, days)
         .into_iter()
-        .map(|slot| {
-            let icon_info = get_icon_plain(slot.weather_code, true, icon_set);
+        .enumerate()
+        .map(|(index, slot)| {
+            let icon_info = get_icon_plain(slot.weather_code, true, icon_set, language);
             DailyEntry {
+                label: day_label(&slot.date, index, language),
                 date: slot.date,
                 temperature_min: slot.temperature_min,
                 temperature_max: slot.temperature_max,
@@ -292,6 +319,23 @@ fn build_daily(weather: &WeatherData, days: u8, icon_set: &IconSet) -> Vec<Daily
             }
         })
         .collect()
+}
+
+/// The panel's daily row label. The first entry is "today" in the requested
+/// language; the others are the short weekday and the day of the month, no
+/// zero padding ("Thu 21"). A date that does not parse is returned as is.
+fn day_label(date: &str, index: usize, language: Language) -> String {
+    let Ok(parsed) = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d") else {
+        return date.to_string();
+    };
+    if index == 0 {
+        return crate::i18n::today(language).to_string();
+    }
+    format!(
+        "{} {}",
+        crate::i18n::short_weekday(parsed.weekday(), language),
+        parsed.day()
+    )
 }
 
 #[cfg(test)]
@@ -346,7 +390,9 @@ mod tests {
         CacheInfo::empty()
     }
 
-    /// Positional wrapper around `build`, so the tests stay readable.
+    /// Positional wrapper around `build`, so the tests stay readable. Always
+    /// English — `structured_output_is_localized` below is the one test that
+    /// calls `build` directly to check German threads through.
     fn build_test(
         weather: &WeatherData,
         city: &str,
@@ -365,6 +411,7 @@ mod tests {
                 hours,
                 icon_set,
                 imperial,
+                language: Language::En,
             },
             cache,
             &ThemeColors::default(),
@@ -396,6 +443,55 @@ mod tests {
         assert_eq!(current.description, "Overcast");
         assert!(current.is_day);
         assert!(!current.icon.is_empty());
+    }
+
+    #[test]
+    fn structured_output_is_localized() {
+        // Unlike build_test, calls build() directly with language: De — this
+        // is the one test confirming German actually threads through Request
+        // into the current/hourly/daily condition text.
+        let out = build(
+            &fixture(),
+            "Berlin",
+            "Berlin",
+            &Request {
+                days: 2,
+                hours: 1,
+                icon_set: &IconSet::Nerd,
+                imperial: false,
+                language: Language::De,
+            },
+            fresh_cache(),
+            &ThemeColors::default(),
+        );
+        let current = out.current.expect("current present");
+        // current.weather_code is 3 ("Overcast" / "Bedeckt" in the fixture).
+        assert_eq!(current.description, "Bedeckt");
+        // condition (the CSS-class-style slug) never translates.
+        assert_eq!(current.condition, "cloudy");
+        // The first selected hour carries code 3 as well.
+        assert_eq!(out.hourly[0].description, "Bedeckt");
+        // daily[0] shares the same code (weather_code: vec![3, 61]).
+        assert_eq!(out.daily[0].description, "Bedeckt");
+        assert_eq!(out.daily[1].description, "Leichter Regen");
+        // The row labels come translated too; both fixture days are 2026-08-20,
+        // a Thursday.
+        assert_eq!(out.daily[0].label, "Heute");
+        assert_eq!(out.daily[1].label, "Do 20");
+    }
+
+    #[test]
+    fn day_labels_are_today_then_weekday_and_day_in_english() {
+        let out = build_test(&fixture(), "X", 2, 0, &IconSet::Nerd, false, fresh_cache());
+        assert_eq!(out.daily[0].label, "Today");
+        assert_eq!(out.daily[1].label, "Thu 20");
+    }
+
+    #[test]
+    fn a_date_that_does_not_parse_is_its_own_label() {
+        assert_eq!(day_label("nope", 0, Language::De), "nope");
+        assert_eq!(day_label("2026-08-21", 1, Language::De), "Fr 21");
+        assert_eq!(day_label("2026-08-21", 0, Language::De), "Heute");
     }
 
     #[test]
