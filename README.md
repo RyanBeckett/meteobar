@@ -428,6 +428,7 @@ meteobar --output json --location "Berlin" --days 6 --hours 12
     "wind_direction": "SW",
     "pressure": 1014.0,
     "precipitation": 0.0,
+    "uv_index": 4.2,
     "weather_code": 2,
     "is_day": true,
     "icon": "󰖕",
@@ -438,7 +439,7 @@ meteobar --output json --location "Berlin" --days 6 --hours 12
     { "time": "2026-08-20T16:00", "temperature": 24.0, "weather_code": 2, "is_day": true, "icon": "󰖕", "description": "Partly cloudy", "precip_pct": 5 }
   ],
   "daily": [
-    { "date": "2026-08-20", "temperature_min": 14.0, "temperature_max": 24.0, "weather_code": 2, "icon": "󰖕", "description": "Partly cloudy", "precip_pct": 10, "sunrise": "2026-08-20T05:56", "sunset": "2026-08-20T20:31" }
+    { "date": "2026-08-20", "temperature_min": 14.0, "temperature_max": 24.0, "weather_code": 2, "icon": "󰖕", "description": "Partly cloudy", "precip_pct": 10, "uv_index_max": 6.1, "sunrise": "2026-08-20T05:56", "sunset": "2026-08-20T20:31" }
   ]
 }
 ```
@@ -448,6 +449,7 @@ Notes on the shape:
 - `error` is `null`, or an object with a `message` and an optional `code`.
 - `cache.stale` is `true` when the fetch failed and meteobar served the last data it had. `cache.stale_reason` then gives the cause.
 - `palette` carries the colors the core resolved from your theme. `precip_ramp` gives each stop a position, so a frontend can interpolate between the stops.
+- `current.uv_index` and `daily[].uv_index_max` are `null` when the payload carries no value, for example a cache written by an older meteobar.
 - Both frontends select the same entries: `hourly` starts at the hour in progress, and every entry carries the `is_day` flag that decides its icon.
 
 > [!IMPORTANT]

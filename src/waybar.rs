@@ -183,9 +183,8 @@ pub fn build_tooltip(
     let wind = current.wind_speed_10m.unwrap_or(0.0).round() as i32;
     let wind_dir = degrees_to_cardinal(current.wind_direction_10m.unwrap_or(0.0));
     let pressure = current.pressure_msl.unwrap_or(0.0).round() as i32;
-    // One decimal: the UV index is published on a 0-11+ scale where the whole
-    // number is the band, so rounding to an integer would move a reading across
-    // a band boundary the WHO defines.
+    // One decimal: the scale is 0-11+, and an integer would hide most of the
+    // movement a day shows.
     let uv = current.uv_index.map(|v| format!("{v:.1}"));
     // Tooltip always uses Nerd Font icons for consistent monospace alignment.
     // Pango renders emoji from a separate font with different glyph metrics,
