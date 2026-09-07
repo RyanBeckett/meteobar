@@ -83,6 +83,8 @@ pub struct CurrentWeather {
     pub pressure_msl: Option<f64>,
     #[serde(default)]
     pub precipitation: Option<f64>,
+    #[serde(default)]
+    pub uv_index: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -97,6 +99,8 @@ pub struct DailyForecast {
     pub precipitation_probability_max: Vec<u8>,
     #[serde(default)]
     pub wind_speed_10m_max: Vec<f64>,
+    #[serde(default)]
+    pub uv_index_max: Vec<f64>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -298,8 +302,8 @@ pub fn fetch_weather(
     hours: u8,
     units: &Units,
 ) -> Result<WeatherData, String> {
-    let current_params = "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_direction_10m,pressure_msl,precipitation";
-    let daily_params = "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max";
+    let current_params = "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_direction_10m,pressure_msl,precipitation,uv_index";
+    let daily_params = "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max,uv_index_max";
 
     let mut url = format!(
         "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current={current_params}&daily={daily_params}&timezone=auto&forecast_days={days}"
@@ -368,4 +372,51 @@ fn urlencoding(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A cache written before UV was requested carries neither key. It must
+    /// deserialize with the fields defaulted, not fail.
+    #[test]
+    fn a_payload_without_uv_keys_deserializes_with_uv_absent() {
+        let json = r#"{
+            "timezone": "Europe/Berlin",
+            "current": { "temperature_2m": 21.0, "weather_code": 3, "is_day": 1 },
+            "daily": {
+                "time": ["2026-08-20", "2026-08-21"],
+                "weather_code": [3, 61],
+                "temperature_2m_max": [24.0, 19.0],
+                "temperature_2m_min": [14.0, 12.0],
+                "sunrise": ["2026-08-20T05:56", "2026-08-21T05:58"],
+                "sunset": ["2026-08-20T20:31", "2026-08-21T20:29"]
+            }
+        }"#;
+        let data: WeatherData = serde_json::from_str(json).expect("older payload deserializes");
+        assert_eq!(data.current.uv_index, None);
+        assert!(data.daily.uv_index_max.is_empty());
+        assert_eq!(data.daily.time.len(), 2);
+    }
+
+    #[test]
+    fn uv_keys_deserialize_when_present() {
+        let json = r#"{
+            "timezone": "Europe/Berlin",
+            "current": { "temperature_2m": 21.0, "weather_code": 3, "is_day": 1, "uv_index": 4.2 },
+            "daily": {
+                "time": ["2026-08-20"],
+                "weather_code": [3],
+                "temperature_2m_max": [24.0],
+                "temperature_2m_min": [14.0],
+                "sunrise": ["2026-08-20T05:56"],
+                "sunset": ["2026-08-20T20:31"],
+                "uv_index_max": [6.1]
+            }
+        }"#;
+        let data: WeatherData = serde_json::from_str(json).expect("payload deserializes");
+        assert_eq!(data.current.uv_index, Some(4.2));
+        assert_eq!(data.daily.uv_index_max, vec![6.1]);
+    }
 }
