@@ -728,11 +728,11 @@ Panel {
               Item {
                 anchors.left: statsRow.left
                 anchors.right: parent.right
-                // The field is a shade taller than the plain label even with
-                // its padding dropped, because of its border. Reserve that
-                // height in BOTH states rather than switching between them:
-                // the row then never moves when the label becomes a field,
-                // and the field still is not clipped.
+                // The field is taller than the plain label it stands in for.
+                // Reserve its height in BOTH states rather than switching
+                // between them: the row never moves when the label becomes a
+                // field, and the field keeps the size it wants instead of
+                // being squeezed into the label's line.
                 height: Math.max(locationMark.implicitHeight,
                                  locationText.implicitHeight,
                                  locationField.implicitHeight)
@@ -783,11 +783,6 @@ Panel {
                   foreground: root.fg
                   accent: root.panelColored ? Color.accent : root.fg
                   font.family: root.fontFam
-                  // Match the label it replaces, and drop the padding meant
-                  // for dialog forms -- TextField documents this as the
-                  // treatment for an inline, row-embedded field.
-                  font.pixelSize: Style.font.bodySmall
-                  verticalPadding: 0
                   anchors.left: locationMark.right
                   anchors.leftMargin: Style.space(6)
                   anchors.right: parent.right
