@@ -728,12 +728,14 @@ Panel {
               Item {
                 anchors.left: statsRow.left
                 anchors.right: parent.right
-                // The editable field carries a border and padding, so it is
-                // taller than the plain label it stands in for. Sizing the row
-                // only from the label clipped the field's top edge.
-                height: root.editingLocation
-                  ? Math.max(locationMark.implicitHeight, locationField.implicitHeight)
-                  : Math.max(locationMark.implicitHeight, locationText.implicitHeight)
+                // The field is a shade taller than the plain label even with
+                // its padding dropped, because of its border. Reserve that
+                // height in BOTH states rather than switching between them:
+                // the row then never moves when the label becomes a field,
+                // and the field still is not clipped.
+                height: Math.max(locationMark.implicitHeight,
+                                 locationText.implicitHeight,
+                                 locationField.implicitHeight)
                 // Stays reachable while editing even when nothing resolved, so a
                 // failed lookup can still be corrected by hand.
                 visible: root.locationName !== "" || root.editingLocation
@@ -781,6 +783,11 @@ Panel {
                   foreground: root.fg
                   accent: root.panelColored ? Color.accent : root.fg
                   font.family: root.fontFam
+                  // Match the label it replaces, and drop the padding meant
+                  // for dialog forms -- TextField documents this as the
+                  // treatment for an inline, row-embedded field.
+                  font.pixelSize: Style.font.bodySmall
+                  verticalPadding: 0
                   anchors.left: locationMark.right
                   anchors.leftMargin: Style.space(6)
                   anchors.right: parent.right
