@@ -55,13 +55,13 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = CliUnits::Metric)]
     units: CliUnits,
 
-    /// Temperature unit on its own. Unset follows --units. Set this with
-    /// `--units metric` for the UK pairing of °C temperatures and mph wind,
-    /// which neither unit system offers.
+    /// Temperature unit on its own. Unset follows --units.
     #[arg(long, value_enum)]
     temperature_unit: Option<CliTemperatureUnit>,
 
-    /// Wind speed unit on its own. Unset follows --units.
+    /// Wind speed unit on its own. Unset follows --units. `--units metric
+    /// --wind-speed-unit mph` gives the UK pairing of °C temperatures and mph
+    /// wind, which neither unit system offers.
     #[arg(long, value_enum)]
     wind_speed_unit: Option<CliWindSpeedUnit>,
 
@@ -191,8 +191,6 @@ fn main() {
             CliWindSpeedUnit::Kn => api::WindSpeedUnit::Kn,
         };
     }
-    let unit_label = units.temperature.label();
-
     let cache_key = cache::CacheKey {
         location: cache_location_descriptor(&cli),
         units: units.cache_tag(),
@@ -212,7 +210,7 @@ fn main() {
                     &weather,
                     &city,
                     &cli,
-                    unit_label,
+                    units,
                     &colors,
                     last_fetched,
                     if freshness.stale {
@@ -447,7 +445,7 @@ fn build_output(
     weather: &api::WeatherData,
     city: &str,
     cli: &Cli,
-    unit_label: &str,
+    units: api::Units,
     colors: &theme::ThemeColors,
     last_fetched: Option<chrono::DateTime<chrono::Local>>,
     stale_reason: Option<&str>,
@@ -523,7 +521,7 @@ fn build_output(
         &cli.tooltip_format,
         cli.days,
         cli.hours,
-        unit_label,
+        units,
         colors,
         last_fetched,
         stale_reason,

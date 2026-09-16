@@ -293,8 +293,8 @@ Configure these keys in the shell settings window, or in the layout entry in `sh
 |---|---|---|---|
 | `refreshMinutes` | 1-180 | `15` | Minutes between refreshes |
 | `units` | `metric`, `imperial` | `metric` | Unit system |
-| `temperatureUnit` | `follow`, `celsius`, `fahrenheit` | `follow` | Temperature unit on its own. `follow` takes it from `units` |
-| `windSpeedUnit` | `follow`, `kmh`, `mph`, `ms`, `kn` | `follow` | Wind speed unit on its own. `follow` takes it from `units`; `mph` with metric `units` gives °C temperatures and mph wind |
+| `temperatureUnit` | `follow`, `celsius`, `fahrenheit` | `follow` | Temperature unit on its own. `follow` takes it from `units`. Needs meteobar 0.5.4 or later: an older CLI rejects `--temperature-unit` |
+| `windSpeedUnit` | `follow`, `kmh`, `mph`, `ms`, `kn` | `follow` | Wind speed unit on its own. `follow` takes it from `units`; `mph` with metric `units` gives °C temperatures and mph wind. Needs meteobar 0.5.4 or later: an older CLI rejects `--wind-speed-unit` |
 | `location` | text | `""` | City name, `City, Province`, or `City, CC`. An empty value detects the location by IP |
 | `iconSet` | `nerd`, `weather`, `emoji`, `fontawesome` | `nerd` | Icon set. `fontawesome` needs otf-font-awesome 7 or later |
 | `colorMode` | `full`, `none`, `bar-only`, `panel-only` | `full` | Where to keep the colors |
