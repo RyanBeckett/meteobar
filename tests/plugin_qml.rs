@@ -2,6 +2,7 @@
 // button in the Omarchy panel. The QML has no test runner; these substring
 // checks pin the load-bearing lines. Expectations are written out by hand.
 static PANEL: &str = include_str!("../omarchy/Panel.qml");
+static BAR_WIDGET: &str = include_str!("../omarchy/BarWidget.qml");
 
 #[test]
 fn a_run_is_marked_not_installed_only_without_an_exit_signal() {
@@ -71,6 +72,122 @@ fn saving_a_location_carries_the_other_settings_across() {
         PANEL
             .contains(r#"for (var k in root.settings) if (k !== "id") next[k] = root.settings[k]"#),
         "every existing setting must be copied before location is written back"
+    );
+}
+
+#[test]
+fn the_location_is_persisted_through_the_bar_facade() {
+    // The host injects `bar`, `moduleName` and `settings` into a widget and
+    // nothing else (Bar.qml injectProps); the plugin shell API rides on
+    // bar.shell, which is how the first-party clock persists its format. A
+    // `shell` property of our own is never filled, so a panel that reads it
+    // would silently take the CLI fallback on every edit.
+    assert!(
+        PANEL.contains("var api = root.bar ? root.bar.shell : null"),
+        "the persist path must read the facade from bar.shell"
+    );
+    assert!(
+        PANEL.contains(r#"api.updateEntryInline("mryll.meteobar", next)"#),
+        "the facade must be asked to update this widget's own entry"
+    );
+    assert!(
+        !PANEL.contains("property var shell") && !BAR_WIDGET.contains("property var shell"),
+        "no self-declared shell property: the host never fills one"
+    );
+}
+
+#[test]
+fn the_geocoder_curl_runs_through_sh_and_there_is_no_cli_write_fallback() {
+    // claudebar#6: a nonexistent binary handed to Quickshell can abort the
+    // whole shell inside the failed start. sh always starts.
+    assert!(
+        PANEL.contains(r#"geocodeProc.command = ["/bin/sh", "-c", 'exec "$0" "$@"',"#),
+        "the geocoder curl must be wrapped in sh"
+    );
+    assert!(
+        !PANEL.contains(r#"command = ["curl""#),
+        "no direct (unwrapped) curl command assignment"
+    );
+    // `omarchy bar set` rides the same shell IPC as the facade, so it is not
+    // an independent path; a fire-and-forget process would lose the edit
+    // silently. A refused write keeps the field open instead.
+    assert!(
+        !PANEL.contains(r#""omarchy", "bar", "set""#),
+        "no CLI fallback for the location write"
+    );
+    // One contiguous block: the refusal returns BEFORE the field closes. Two
+    // independent fragments would still match with the early return gone.
+    assert!(
+        PANEL.contains(
+            "    if (!wrote) {\n      console.warn(\"meteobar: the shell did not accept the location write; the field stays open\")\n      return\n    }\n\n    root.editingLocation = false\n"
+        ),
+        "the field closes only after the facade accepted the write"
+    );
+}
+
+#[test]
+fn only_one_geocode_request_runs_at_a_time() {
+    // The debounce and the deferred re-ask can both fire while a run is
+    // active; Quickshell would queue a repeat run and the old answer could
+    // be tagged with the new query, which Enter then trusts.
+    assert!(
+        PANEL.contains(
+            "    if (geocodeProc.running || !root.geocodeStreamDone) return\n    root.geocodeStreamDone = false\n    root.geocodeActiveQuery = root.geocodePendingQuery\n"
+        ),
+        "startGeocode must refuse to move the active query under a running request"
+    );
+    assert!(
+        PANEL.contains("onRunningChanged: if (!running) root.geocodeMaybeContinue()")
+            && PANEL.contains("root.geocodeStreamDone = true"),
+        "the re-ask waits for both the exit and the end of the stream"
+    );
+    assert!(
+        PANEL.contains(
+            "if (!root.editingLocation) return\n      locationField.text = root.locationSetting"
+        ),
+        "the deferred open must stand down after a cancel"
+    );
+}
+
+#[test]
+fn enter_never_takes_a_row_for_text_the_user_no_longer_has() {
+    // Clear the field and press Enter inside the debounce: the old rows are
+    // still listed, and the result must be automatic detection, not the
+    // first row of the previous query.
+    assert!(
+        PANEL.contains(
+            r#"if (typed !== "" && root.locationSuggestions.length > 0 && root.suggestionsQuery === typed)"#
+        ),
+        "Enter must check the rows answer the current text"
+    );
+    assert!(
+        PANEL.contains("root.suggestionsQuery = root.geocodeActiveQuery"),
+        "a finished request must tag its rows with the query they answer"
+    );
+    assert!(
+        PANEL.contains("if (v === root.locationSetting) {"),
+        "an unchanged commit must not be written back"
+    );
+}
+
+#[test]
+fn a_closed_panel_ends_the_edit_and_the_parser_trusts_no_length() {
+    assert!(
+        PANEL.contains("else if (editingLocation) cancelEditingLocation()"),
+        "a close from anywhere must end the edit"
+    );
+    assert!(
+        PANEL.contains("if (!Array.isArray(results)) return []"),
+        "the geocoder body must be a real array"
+    );
+    assert!(
+        PANEL.contains("i < Math.min(results.length, 5)"),
+        "no more rows than the URL asked for"
+    );
+    assert!(
+        PANEL.contains("if (!root.editingLocation) return")
+            && PANEL.contains("if (!root.hasData && root.errorMessage === \"\") return"),
+        "an answer after the field closed is dropped; no edit while loading"
     );
 }
 

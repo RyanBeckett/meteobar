@@ -218,7 +218,7 @@ meteobar adds a class for the condition, so you can style the bar yourself:
 
 ## Omarchy shell plugin
 
-The repository is also an [Omarchy](https://omarchy.org) shell plugin. The bar shows the condition glyph and the temperature. A click on the bar opens a panel with the current conditions, the next 12 hours, and the next 6 days. A middle-click gets new data. The footer of the panel ends with a refresh control (󰑐), next to the time of the last update. The control stays disabled while a fetch runs. A click on the location, under the temperature, turns it into a search field: type a town, pick one of the suggestions, and the panel keeps it. An empty entry returns to detection by IP.
+The repository is also an [Omarchy](https://omarchy.org) shell plugin. The bar shows the condition glyph and the temperature. A click on the bar opens a panel with the current conditions, the next 12 hours, and the next 6 days. A middle-click gets new data. The footer of the panel ends with a refresh control (󰑐), next to the time of the last update. The control stays disabled while a fetch runs. A click on the location, under the temperature, turns it into a search field: type a town, pick one of the suggestions with the arrow keys and Enter (or a click), and the panel keeps it. Enter with no suggestion for the text keeps the text as typed, and the next fetch resolves it. Escape cancels. An empty entry returns to detection by IP. When no forecast was ever shown, a marker control (󰍎) in the error row opens the same field.
 
 <p align="center">
   <img src="screenshots/omarchy-bar.png" alt="meteobar in the Omarchy bar" width="44">
